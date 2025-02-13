@@ -27,7 +27,8 @@
     "clean": "rimraf dist",
     "dev:typeorm": "ts-node-dev -r tsconfig-paths/register examples/typeorm/index.ts",
     "test": "jest",
-    "prepublishOnly": "npm run-script clean && npm run-script build"
+    "prepublishOnly": "npm run-script clean && npm run-script build",
+    "postinstall": "npm run build"
   },
   "dependencies": {
     "dataloader": "^2.1.0",
@@ -55,5 +56,6 @@
     "type-graphql": "^1.1.1",
     "typeorm": "^0.2.38",
     "typescript": "~4.4.4"
-  }
+  },
+  "packageManager": "yarn@1.22.22+sha1.ac34549e6aa8e7ead463a7407e1c7390f61a6610"
 }
