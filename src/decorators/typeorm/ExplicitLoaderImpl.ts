@@ -3,7 +3,7 @@ import DataLoader from "dataloader";
 import { Dictionary, groupBy, keyBy } from "lodash";
 import { UseMiddleware } from "type-graphql";
 import Container from "typedi";
-import type { Connection } from "typeorm";
+import type { Connection, QueryRunner } from "typeorm";
 import type { ColumnMetadata } from "typeorm/metadata/ColumnMetadata";
 import type { RelationMetadata } from "typeorm/metadata/RelationMetadata";
 import { TypeormLoaderOption } from "./TypeormLoader";
@@ -15,7 +15,7 @@ export function ExplicitLoaderImpl<V>(
   option?: TypeormLoaderOption
 ): PropertyDecorator {
   return (target: Object, propertyKey: string | symbol) => {
-    UseMiddleware(async ({ root, context }, next) => {
+    UseMiddleware(async ({ root, context, info }, next) => {
       const tgdContext = context._tgdContext as TgdContext;
       if (tgdContext.typeormGetConnection == null) {
         throw Error("typeormGetConnection is not set");
@@ -52,7 +52,17 @@ export function ExplicitLoaderImpl<V>(
         relation.isManyToMany ?
           handleToMany :
         () => next();
-      return await handle<V>(keyFunc, root, tgdContext, relation);
+      return await handle<V>(
+        keyFunc,
+        root,
+        tgdContext,
+        relation,
+        tgdContext.mutationReplica && String(info.operation) === "mutation"
+          ? tgdContext
+              .typeormGetConnection()
+              .createQueryRunner(tgdContext.mutationReplica)
+          : undefined
+      );
     })(target, propertyKey);
   };
 }
@@ -88,13 +98,14 @@ async function handleToMany<V>(
   foreignKeyFunc: (root: any) => any | undefined,
   root: any,
   tgdContext: TgdContext,
-  relation: RelationMetadata
+  relation: RelationMetadata,
+  queryRunner?: QueryRunner
 ) {
   return handler(
     tgdContext,
     relation,
     relation.inverseEntityMetadata.primaryColumns,
-    (connection) => new ToManyDataloader<V>(relation, connection),
+    (connection) => new ToManyDataloader<V>(relation, connection, queryRunner),
     async (dataloader) => {
       const fks = foreignKeyFunc(root);
       return await dataloader.loadMany(fks);
@@ -106,13 +117,14 @@ async function handleToOne<V>(
   foreignKeyFunc: (root: any) => any | undefined,
   root: any,
   tgdContext: TgdContext,
-  relation: RelationMetadata
+  relation: RelationMetadata,
+  queryRunner?: QueryRunner
 ) {
   return handler(
     tgdContext,
     relation,
     relation.inverseEntityMetadata.primaryColumns,
-    (connection) => new ToOneDataloader<V>(relation, connection),
+    (connection) => new ToOneDataloader<V>(relation, connection, queryRunner),
     async (dataloader) => {
       const fk = foreignKeyFunc(root);
       return fk != null ? await dataloader.load(fk) : null;
@@ -157,12 +169,17 @@ async function handleOneToOneNotOwnerWithSelfKey<V>(
 function directLoader<V>(
   relation: RelationMetadata,
   connection: Connection,
-  grouper: string | ((entity: V) => any)
+  grouper: string | ((entity: V) => any),
+  queryRunner?: QueryRunner
 ) {
   return async (ids: readonly any[]) => {
     const entities = keyBy(
       await connection
-        .createQueryBuilder<V>(relation.type, relation.propertyName)
+        .createQueryBuilder<V>(
+          relation.type,
+          relation.propertyName,
+          queryRunner
+        )
         .whereInIds(ids)
         .getMany(),
       grouper
@@ -172,22 +189,37 @@ function directLoader<V>(
 }
 
 class ToManyDataloader<V> extends DataLoader<any, V> {
-  constructor(relation: RelationMetadata, connection: Connection) {
+  constructor(
+    relation: RelationMetadata,
+    connection: Connection,
+    queryRunner?: QueryRunner
+  ) {
     super(
-      directLoader(relation, connection, (entity) =>
-        relation.inverseEntityMetadata.primaryColumns[0].getEntityValue(entity)
+      directLoader(
+        relation,
+        connection,
+        (entity) =>
+          relation.inverseEntityMetadata.primaryColumns[0].getEntityValue(
+            entity
+          ),
+        queryRunner
       )
     );
   }
 }
 
 class ToOneDataloader<V> extends DataLoader<any, V> {
-  constructor(relation: RelationMetadata, connection: Connection) {
+  constructor(
+    relation: RelationMetadata,
+    connection: Connection,
+    queryRunner?: QueryRunner
+  ) {
     super(
       directLoader(
         relation,
         connection,
-        relation.inverseEntityMetadata.primaryColumns[0].propertyName
+        relation.inverseEntityMetadata.primaryColumns[0].propertyName,
+        queryRunner
       )
     );
   }

@@ -114,3 +114,23 @@ export default class UserResolver {
   }
 }
 ```
+
+### Automatically use specific replica for mutation operation
+
+When using database with replica and fetching data after performing data mutation, sometimes the loader returns stale data because the typeorm data fetching uses `slave` replica. To overcome this, we need to setup `mutationReplica` to use when fetching data after performing mutation.
+
+```ts
+...
+
+const apollo = new ApolloServer({
+  schema,
+  plugins: [
+    ApolloServerLoaderPlugin({
+      typeormGetConnection: getConnection,  // for use with TypeORM
+      mutationReplica: 'master'
+    }),
+  ],
+});
+
+...
+```

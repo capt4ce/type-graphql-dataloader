@@ -7,6 +7,7 @@ import { v4 as uuidv4 } from "uuid";
 
 interface ApolloServerLoaderPluginOption {
   typeormGetConnection?: () => Connection;
+  mutationReplica?: boolean;
 }
 
 const ApolloServerLoaderPlugin = (
@@ -18,6 +19,7 @@ const ApolloServerLoaderPlugin = (
         _tgdContext: {
           requestId: uuidv4(),
           typeormGetConnection: option?.typeormGetConnection,
+          mutationReplica: option?.mutationReplica,
         } as TgdContext,
       });
     },
